@@ -1,0 +1,55 @@
+# Virtual environments - CRITICAL
+.venv/
+venv/
+env/
+ENV/
+.ENV/
+
+# Node modules - CRITICAL
+node_modules/
+
+# Dagster specific
+.tmp_dagster_home_*/
+dagster_home/
+.dagster/
+*.db
+*.db-*
+logs/
+storage/
+tmp/
+temp/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Data files (adjust as needed)
+*.csv
+*.json
+*.xlsx
+*.parquet
+# Environment files - NEVER commit these!
+.env
+.env.local
+.env.*.local
