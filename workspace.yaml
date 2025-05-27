@@ -1,2 +1,3 @@
+# /home/jgupdogg/dev/dagster/workspace.yaml
 load_from:
-  - python_module: solana_pipeline.repository
+  - python_module: solana_pipeline.definitions
