@@ -20,26 +20,25 @@ google_sheets_job = define_asset_job(
     selection=AssetSelection.groups("google_sheets")
 )
 
-# Transaction processing job - REVISED to remove the transaction_notification asset
+# Updated transaction_processing_job definition to include in jobs.py
+
 transaction_processing_job = define_asset_job(
     name="transaction_processing_job",
-    description="Process unprocessed webhook data into clean transaction records",
+    description="Process unprocessed webhook data into clean transaction records and enrich token metadata",
     selection=AssetSelection.assets(
-        "unprocessed_webhook_data", 
-        "processed_transactions"
-        # Removed "transaction_notification" since we're using enhanced_notification instead
+        # Original assets
+        "unprocessed_webhook_data",
+        "processed_transactions",
+        # New token enrichment assets
+        "tokens_needing_metadata",
+        "fetch_token_metadata", 
+        "fetch_token_security",
+        "fetch_token_creation", 
+        "active_token_notification",
+""
     )
 )
 
-# Alpha detection job - simplified for active token signals
-active_token_job = define_asset_job(
-    name="active_token_job",
-    description="Detect active token signals based on transaction activity and send notifications",
-    selection=AssetSelection.assets(
-        "active_token_notification",
-    ),
-    # No config needed for this simplified version
-)
 
 # Comprehensive alpha pipeline job
 comprehensive_alpha_job = define_asset_job(

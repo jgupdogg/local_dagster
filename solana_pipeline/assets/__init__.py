@@ -6,6 +6,7 @@ from solana_pipeline.assets.webhook import helius_webhook
 from solana_pipeline.assets.google import gsheet_assets  # Now importing the list of generated assets
 from solana_pipeline.assets.txn_process import unprocessed_webhook_data, processed_transactions
 from solana_pipeline.assets.active_tokens import active_token_notification
+from solana_pipeline.assets.token_enrichment import fetch_token_security, fetch_token_metadata, fetch_token_creation
 
 
 # Export all assets
@@ -15,7 +16,10 @@ solana_assets = [
     trending_tokens,
     token_whales,
     wallet_trade_history,
-    
+    fetch_token_creation, 
+    fetch_token_metadata, 
+    fetch_token_security,
+        
     # Silver tier
     tracked_tokens,
     wallet_pnl,

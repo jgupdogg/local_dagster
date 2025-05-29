@@ -69,13 +69,13 @@ unique_token_data AS (
 token_metadata_unique AS (
     SELECT DISTINCT ON (token_address)
         token_address,
-        token_symbol,
+        symbol,
         token_name,
         website,
         twitter,
         logo_uri
     FROM bronze.token_metadata
-    ORDER BY token_address, token_symbol NULLS LAST
+    ORDER BY token_address, symbol NULLS LAST
 ),
 
 -- Get unique creation info
