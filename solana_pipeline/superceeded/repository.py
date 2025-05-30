@@ -7,7 +7,7 @@ from solana_pipeline.assets.google import gsheet_assets
 from solana_pipeline.assets import active_tokens  # Import active tokens module once
 
 # Import jobs 
-from solana_pipeline.jobs import (
+from solana_pipeline.superceeded.jobs import (
     complete_pipeline_job,
     google_sheets_job,
     transaction_processing_job,

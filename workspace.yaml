@@ -1,3 +1,4 @@
-# /home/jgupdogg/dev/dagster/workspace.yaml
+# workspace.yaml
 load_from:
   - python_module: solana_pipeline.definitions
+  - python_module: btc_pipeline.definitions

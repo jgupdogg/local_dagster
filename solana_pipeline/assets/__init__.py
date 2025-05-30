@@ -8,7 +8,6 @@ from solana_pipeline.assets.txn_process import unprocessed_webhook_data, process
 from solana_pipeline.assets.active_tokens import active_token_notification
 from solana_pipeline.assets.token_enrichment import fetch_token_security, fetch_token_metadata, fetch_token_creation
 
-
 # Export all assets
 solana_assets = [
     # Bronze tier

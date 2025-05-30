@@ -3,5 +3,3 @@
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
-[tool.dagster]
-module_name = "solana_pipeline.definitions"

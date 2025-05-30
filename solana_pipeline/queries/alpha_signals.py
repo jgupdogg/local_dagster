@@ -70,7 +70,7 @@ token_metadata_unique AS (
     SELECT DISTINCT ON (token_address)
         token_address,
         symbol,
-        token_name,
+        name,
         website,
         twitter,
         logo_uri
@@ -120,8 +120,8 @@ twitter_followers AS (
 -- Final result with unique token addresses
 SELECT
     utd.token_address,
-    COALESCE(tmu.token_symbol, 'Unknown') AS symbol,
-    COALESCE(tmu.token_name, 'Unknown Token') AS name,
+    COALESCE(tmu.symbol, 'Unknown') AS symbol,
+    COALESCE(tmu.name, 'Unknown Token') AS name,
     tmu.website,
     tmu.twitter,
     tmu.logo_uri,
