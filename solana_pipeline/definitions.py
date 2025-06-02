@@ -76,7 +76,7 @@ process_and_notify_job = define_asset_job(
 # Define schedules (using timing from repository.py where different)
 complete_pipeline_schedule = ScheduleDefinition(
     job=complete_pipeline_job,
-    cron_schedule="0 */8 * * *",  # Every 8 hours (from repository.py)
+    cron_schedule="0 */24 * * *",  # Every 24 hours (from repository.py)
     default_status=DefaultScheduleStatus.RUNNING,
 )
 

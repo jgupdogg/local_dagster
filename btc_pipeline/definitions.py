@@ -14,7 +14,7 @@ from common.resources import DatabaseResource, UnifiedScraperResource
 
 # Load all assets from modules
 btc_assets = load_assets_from_modules([
-    # btc_fng, 
+    btc_fng, 
     btc_oi
     ])
 

@@ -1,15 +1,11 @@
-"""
-Bitcoin pipeline data models - FIXED
-"""
-
 """SQLModel definitions for Bitcoin Pipeline with data validation."""
 from sqlmodel import SQLModel, Field, create_engine
 import os
 from dotenv import load_dotenv
-from sqlalchemy import Column, Integer, String, DateTime, Float, Numeric, Boolean, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Float, Numeric, Boolean, Index, UniqueConstraint, text
 from datetime import datetime
 from typing import Optional
-from decimal import Decimal  # Move import to top of file
+from decimal import Decimal
 
 # Load environment variables
 load_dotenv()
@@ -18,44 +14,61 @@ load_dotenv()
 class FearGreedIndex(SQLModel, table=True):
     """Model for Bitcoin Fear & Greed Index data."""
     __tablename__ = 'fear_greed_index'
-    __table_args__ = {"schema": "bronze"}
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    # Move unique and index into sa_column
+    # Timestamp with unique constraint for duplicate prevention
     timestamp: datetime = Field(sa_column=Column(DateTime, nullable=False, unique=True, index=True))
     value: int = Field(sa_column=Column(Integer, nullable=False))
     classification: str = Field(sa_column=Column(String(50), nullable=False))
     api_url: Optional[str] = Field(default=None, max_length=500)
-    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, nullable=False))
-    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, onupdate=datetime.utcnow))
     
-    # __table_args__ with Index should be a tuple of args and then the dict for schema
+    # Server-side timestamps for consistency
+    created_at: datetime = Field(
+        sa_column=Column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    )
+    updated_at: Optional[datetime] = Field(
+        sa_column=Column(DateTime, server_default=text("CURRENT_TIMESTAMP"), 
+                         onupdate=datetime.utcnow)
+    )
+    
     __table_args__ = (
         Index('idx_fear_greed_timestamp_value', 'timestamp', 'value'),
-        {"schema": "bronze"} 
+        {"schema": "bronze"}
     )
+
 
 class BitcoinDerivativesMetrics(SQLModel, table=True):
+    """Model for aggregated Bitcoin derivatives metrics."""
     __tablename__ = "bitcoin_derivatives_metrics"
-    id:   Optional[int]    = Field(default=None, primary_key=True)
-    timestamp: datetime    = Field(sa_column=Column(DateTime(timezone=True), nullable=False, index=True))
-    exchange: str          = Field(sa_column=Column(String(100), nullable=False))
-
-    open_interest_usd:   Optional[float] = Field(default=None, sa_column=Column(Numeric(20,2)))
-    volume_24h:          Optional[float] = Field(default=None, sa_column=Column(Numeric(20,2)))
-    funding_rate:        Optional[float] = Field(default=None, sa_column=Column(Numeric(10,6)))
-    liquidations_usd:    Optional[float] = Field(default=None, sa_column=Column(Numeric(20,2)))
-    long_short_ratio:    Optional[float] = Field(default=None, sa_column=Column(Numeric(5,2)))
-
-    api_url:  Optional[str]   = Field(default=None, max_length=500)
-    created_at: datetime      = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, nullable=False))
-    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime, onupdate=datetime.utcnow))
-
-    __table_args__ = (
-        Index("idx_btc_deriv_ts_ex", "timestamp", "exchange"),
-        {"schema":"bronze"},
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    timestamp: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False, index=True))
+    exchange: str = Field(sa_column=Column(String(100), nullable=False))
+    
+    # Use Decimal type hints for financial precision
+    open_interest_usd: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(20,2)))
+    volume_24h: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(20,2)))
+    funding_rate: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(10,6)))
+    liquidations_usd: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(20,2)))
+    long_short_ratio: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(5,2)))
+    
+    api_url: Optional[str] = Field(default=None, max_length=500)
+    
+    # Server-side timestamps
+    created_at: datetime = Field(
+        sa_column=Column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
     )
-
+    updated_at: Optional[datetime] = Field(
+        sa_column=Column(DateTime, server_default=text("CURRENT_TIMESTAMP"), 
+                         onupdate=datetime.utcnow)
+    )
+    
+    __table_args__ = (
+        # Unique constraint for duplicate prevention with ON CONFLICT
+        UniqueConstraint('timestamp', 'exchange', name='uq_btc_deriv_timestamp_exchange'),
+        Index("idx_btc_deriv_ts_ex", "timestamp", "exchange"),
+        {"schema": "bronze"}
+    )
 
 
 def create_tables():
