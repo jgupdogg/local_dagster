@@ -1,0 +1,55 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: Raw data layer
+    schema: bronze
+    # Optional: Add database if you specified it in profiles.yml for consistency
+    # database: solana_analytics
+    tables:
+      - name: webhook_staging
+        description: Staged webhook data ready for transformation
+        columns:
+          - name: id
+            description: Primary key
+          - name: raw_id
+            description: Reference to original helius_hook record
+            tests:
+              - not_null
+              - unique
+          - name: payload
+            description: JSON payload containing transaction data
+            tests:
+              - not_null
+          - name: created_at
+            description: When the record was staged
+      
+      # --- ADD THESE MISSING TABLES ---
+      - name: token_metadata
+        description: "Token metadata from various sources"
+      - name: token_creation_info
+        description: "Token creation information"
+      - name: solsniffer_token_data
+        description: "Solsniffer token scores"
+      - name: x_followers
+        description: "Twitter follower data"
+      # --- END ADDITIONS ---
+
+  - name: silver
+    description: Cleaned data layer
+    schema: silver
+    # Optional: Add database if you specified it in profiles.yml for consistency
+    # database: solana_analytics
+    tables:
+      - name: helius_txns_clean
+        description: Clean transaction data
+        columns:
+          - name: signature
+            description: Transaction signature
+            tests:
+              - unique
+              - not_null
+          - name: timestamp
+            description: Transaction timestamp
+            tests:
+              - not_null

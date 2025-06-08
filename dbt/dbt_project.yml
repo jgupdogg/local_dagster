@@ -1,0 +1,29 @@
+name: 'solana_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'solana_analytics'
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  solana_analytics:
+    solana:
+      staging:
+        +materialized: view
+        +schema: silver
+      marts:
+        +materialized: table
+        +schema: gold
+
+vars:
+  # Default to 1000 transactions, can override in Dagster
+  transaction_limit: 1000
+  # Default lookback window
+  lookback_hours: 24

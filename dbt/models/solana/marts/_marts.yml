@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: mart_active_tokens
+    description: "Tokens with significant trading activity, scored and enriched with metadata"
+    columns:
+      - name: token_address
+        description: "Solana token address"
+        tests:
+          - not_null
+      - name: unique_buyers
+        description: "Count of unique wallets that bought this token"
+        tests:
+          - not_null
+      - name: unique_sellers
+        description: "Count of unique wallets that sold this token"
+        tests:
+          - not_null
+      - name: net_buyers
+        description: "Net difference between buyers and sellers"
+        tests:
+          - not_null
+      - name: signal_type
+        description: "Type of trading signal detected"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['most_unique_buyers', 'most_unique_sellers', 'most_net_buyers']
+      - name: score
+        description: "Activity score for ranking tokens"
+        tests:
+          - not_null
+      - name: symbol
+        description: "Token symbol"
+        tests:
+          - not_null
+      - name: dbt_updated_at
+        description: "Timestamp when this record was created by DBT"
+        tests:
+          - not_null
