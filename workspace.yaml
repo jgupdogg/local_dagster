@@ -2,3 +2,4 @@
 load_from:
   - python_module: solana_pipeline.definitions
   - python_module: btc_pipeline.definitions
+  - python_module: engineering_pipeline.definitions

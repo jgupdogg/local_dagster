@@ -56,6 +56,15 @@ Monitors Bitcoin market indicators:
 - **Assets**: Fear & Greed Index, derivatives data (OI, funding rates, liquidations)
 - **Storage**: SQLModel-based tables with automatic schema creation
 
+### 3. Engineering Pipeline (`engineering_pipeline/`)
+Scrapes EMMA Maryland public solicitations data:
+
+- **Data Sources**: Web scraping EMMA Maryland government site
+- **Assets**: `emma_public_solicitations` - captures raw HTML from public solicitations page
+- **Storage**: PostgreSQL table `engineering.bronze.emma_public_solicitations`
+- **Database**: Uses dedicated "engineering" database with bronze schema
+- **Schedule**: On-demand scraping of https://emma.maryland.gov/page.aspx/en/rfp/request_browse_public
+
 ### Shared Resources (`common/resources/`)
 
 - **DatabaseResource**: 
@@ -87,6 +96,7 @@ Monitors Bitcoin market indicators:
 - `webhook_processing_job`: Every 30 minutes  
 - `btc_market_indicators_job`: Hourly
 - `google_sheets_export_job`: Twice daily (8 AM, 8 PM)
+- `emma_scraping_job`: On-demand EMMA public solicitations data collection
 
 ### DBT Integration
 - DBT project in `dbt/` directory with Solana-specific models
