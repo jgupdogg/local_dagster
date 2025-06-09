@@ -53,3 +53,6 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# google credentials
+google_service_key.json

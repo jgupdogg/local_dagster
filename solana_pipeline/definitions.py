@@ -1,6 +1,7 @@
-"""
-Unified Dagster definitions file - combines all elements from definitions.py and repository.py
-"""
+"""Dagster definitions for Solana pipeline."""
+import os
+from pathlib import Path
+
 from dagster import (
     Definitions,
     load_assets_from_modules,
@@ -9,9 +10,16 @@ from dagster import (
     ScheduleDefinition,
     DefaultScheduleStatus,
     EnvVar,
+    AssetExecutionContext,
+    AssetKey,
 )
-from dagster_slack import SlackResource
+from dagster_postgres.storage import postgres_io_manager
 
+
+from dagster_slack import SlackResource
+from dagster_dbt import DbtCliResource, dbt_assets
+
+# Asset modules
 from solana_pipeline.assets import (
     tokens,
     whales,
@@ -27,96 +35,138 @@ from solana_pipeline.resources import (
     google_sheets_resource,
 )
 
-# Load all assets
-main_assets = load_assets_from_modules(
+# Constants
+DBT_PROJECT_DIR = Path(__file__).parent.parent / "dbt"
+DBT_MANIFEST = DBT_PROJECT_DIR / "target" / "manifest.json"
+
+# Verify DBT setup
+if not DBT_MANIFEST.exists():
+    raise FileNotFoundError(
+        f"DBT manifest not found at {DBT_MANIFEST}. "
+        "Run 'dbt parse' in the dbt directory to generate it."
+    )
+
+
+# --- DBT Assets ---
+@dbt_assets(manifest=DBT_MANIFEST)
+def solana_dbt_models(context: AssetExecutionContext, dbt: DbtCliResource):
+    """Run DBT models for Solana analytics."""
+    yield from dbt.cli(["build"], context=context).stream()
+
+
+# --- Load Python Assets ---
+python_assets = load_assets_from_modules(
     [tokens, whales, webhook, txn_process, active_tokens, token_enrichment]
 )
-all_assets = [*main_assets, *gsheet_assets]
+all_assets = [*python_assets, *gsheet_assets, solana_dbt_models]
 
-# Define all jobs (including comprehensive_alpha_job from repository.py)
-complete_pipeline_job = define_asset_job(
-    "complete_pipeline_job",
-    description="Process tokens, whales, and webhook data",
+
+# --- Job Definitions ---
+
+whale_tracking_job = define_asset_job(
+    "whale_tracking_job",
+    description="Track whale wallets and analyze their trading patterns.",
     selection=AssetSelection.assets(
         "token_list_v3",
-        "trending_tokens", 
+        "trending_tokens",
         "token_whales",
         "wallet_trade_history",
         "tracked_tokens",
         "wallet_pnl",
         "top_traders",
-        "helius_webhook",
     ),
+    tags={"pipeline": "whale_analysis"},
 )
 
-google_sheets_job = define_asset_job(
-    "google_sheets_job",
-    description="Export data to Google Sheets",
-    selection=AssetSelection.groups("google_sheets"),
-)
-
-
-# COMBINED JOB - Process transactions then detect active tokens
-process_and_notify_job = define_asset_job(
-    "process_and_notify_job",
-    description="Process transactions and then detect active tokens for notifications",
-    selection=AssetSelection.assets(
-        "unprocessed_webhook_data",
-        "processed_transactions",
+webhook_processing_job = define_asset_job(
+    "webhook_processing_job",
+    description="Process Helius webhooks and detect active tokens via a hybrid Python/DBT approach.",
+    selection=AssetSelection.keys(
+        "webhook_staging_data",
+        "mark_webhooks_processed",
         "fetch_token_creation",
-        "fetch_token_metadata", 
+        "fetch_token_metadata",
         "fetch_token_security",
         "active_token_notification",
+        # Explicitly select DBT assets that are part of this job's flow
+        AssetKey(["silver", "mart_txns_clean"]),
+        AssetKey(["silver", "stg_recent_transactions"]),
+        AssetKey(["gold", "mart_active_tokens"]),
+        AssetKey(["silver", "stg_webhook_transactions"])
     ),
+    tags={"pipeline": "webhook_processing", "includes_dbt": "true"},
 )
 
-# Note: comprehensive_alpha_job from repository.py was removed because 
-# alpha_signal_detection and enhanced_notification assets don't exist yet
+google_sheets_export_job = define_asset_job(
+    "google_sheets_export_job",
+    description="Export analytics data to Google Sheets.",
+    selection=AssetSelection.groups("google_sheets"),
+    tags={"pipeline": "exports"},
+)
 
-# Define schedules (using timing from repository.py where different)
-complete_pipeline_schedule = ScheduleDefinition(
-    job=complete_pipeline_job,
-    cron_schedule="0 */24 * * *",  # Every 24 hours (from repository.py)
+helius_webhook_job = define_asset_job(
+    "helius_webhook_job",
+    description="Receive and store raw Helius webhook data.",
+    selection=AssetSelection.assets("helius_webhook"),
+    tags={"pipeline": "ingestion"},
+)
+
+
+# --- Schedule Definitions ---
+
+whale_tracking_schedule = ScheduleDefinition(
+    job=whale_tracking_job,
+    cron_schedule="0 */6 * * *",  # Runs every 6 hours
     default_status=DefaultScheduleStatus.RUNNING,
 )
 
-google_sheets_schedule = ScheduleDefinition(
-    job=google_sheets_job,
-    cron_schedule="0 6 * * *",  # Daily at 6 AM UTC
+webhook_processing_schedule = ScheduleDefinition(
+    job=webhook_processing_job,
+    cron_schedule="*/30 * * * *",  # Runs every 30 minutes
     default_status=DefaultScheduleStatus.RUNNING,
 )
 
-# Schedule for the COMBINED job (replaces individual schedules)
-process_and_notify_schedule = ScheduleDefinition(
-    job=process_and_notify_job,
-    cron_schedule="*/10 * * * *",  # Every 10 minutes
+google_sheets_export_schedule = ScheduleDefinition(
+    job=google_sheets_export_job,
+    cron_schedule="0 6,18 * * *",  # Runs twice daily at 6 AM and 6 PM
     default_status=DefaultScheduleStatus.RUNNING,
 )
 
-# Configure resources with explicit config schema
+
+# --- Resource Configuration ---
 resources = {
-    "db": db_resource.configured({
-        "setup_db": True,  # Always create schemas
-    }),
+    "db": db_resource.configured({"setup_db": True}),
     "birdeye_api": birdeye_api_resource,
-    "google_sheets": google_sheets_resource,
-    "slack": SlackResource(
-        token=EnvVar("SLACK_BOT_TOKEN"),
+    "google_sheets": google_sheets_resource.configured({
+        "service_account_key_path": EnvVar("GOOGLE_SHEETS_KEY_PATH"),
+        "spreadsheet_id": EnvVar("GOOGLE_SHEETS_SPREADSHEET_ID"),
+    }),
+    "slack": SlackResource(token=EnvVar("SLACK_BOT_TOKEN")),
+    "dbt": DbtCliResource(
+        project_dir=str(DBT_PROJECT_DIR),
+        profiles_dir=str(DBT_PROJECT_DIR),
+        target_path=str(DBT_PROJECT_DIR / "target"),
+    ),
+    "io_manager": postgres_io_manager(
+        conn_string=f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}",
+        schema="public"
     ),
 }
 
-# Create unified Dagster Definitions
+
+# --- Dagster Definitions ---
 defs = Definitions(
     assets=all_assets,
     jobs=[
-        complete_pipeline_job,
-        google_sheets_job,
-        process_and_notify_job,  # NEW: Combined job
+        whale_tracking_job,
+        webhook_processing_job,
+        google_sheets_export_job,
+        helius_webhook_job,
     ],
     schedules=[
-        complete_pipeline_schedule,
-        google_sheets_schedule,
-        process_and_notify_schedule,  # NEW: Combined schedule
+        whale_tracking_schedule,
+        webhook_processing_schedule,
+        google_sheets_export_schedule,
     ],
     resources=resources,
 )
