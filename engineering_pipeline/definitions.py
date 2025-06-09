@@ -8,11 +8,11 @@ from dagster import (
     AssetSelection,
 )
 
-from engineering_pipeline.assets import emma_solicitations
+from engineering_pipeline import assets
 from common.resources import DatabaseResource, UnifiedScraperResource
 
 # Load all assets from modules
-engineering_assets = load_assets_from_modules([emma_solicitations])
+engineering_assets = load_assets_from_modules([assets])
 
 # Define jobs
 emma_scraping_job = define_asset_job(
