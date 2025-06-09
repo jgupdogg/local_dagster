@@ -8,16 +8,6 @@ conda activate dagster-env
 cd /home/jgupdogg/dev/dagster/dagster_project
 pip install -e .
 
-# Create pyproject.toml in the main directory if it doesn't exist
-cat > /home/jgupdogg/dev/dagster/pyproject.toml << 'EOL'
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[tool.dagster]
-module_name = "dagster_project"
-EOL
-
-# Start Dagster with explicit workspace file
+# Start Dagster
 cd /home/jgupdogg/dev/dagster
-dagster dev -w dagster_project/workspace.yaml
+dagster dev
