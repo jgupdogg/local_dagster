@@ -32,88 +32,87 @@ def emma_contracts_gold(context: AssetExecutionContext) -> MaterializeResult:
     try:
         context.log.info("Starting Contracts Gold layer processing from silver table...")
         
-        # Get unprocessed contracts from silver table
-        contract_data_list = []
+        # Get unprocessed contracts from silver table using processed flags (matching solicitations pattern)
+        cutoff_time = datetime.utcnow() - timedelta(hours=24)
+        
         with db.session_scope() as session:
-            # Calculate 6 hours ago
-            six_hours_ago = datetime.utcnow() - timedelta(hours=6)
-            
-            # Find silver records that need processing:
-            # 1. Have detail_url 
-            # 2. Either not processed OR haven't been processed in gold table within 6 hours
+            # Find silver records that need processing
             unprocessed_contracts = session.query(EmmaPublicContractsSilver).filter(
                 and_(
                     EmmaPublicContractsSilver.detail_url.isnot(None),
                     EmmaPublicContractsSilver.detail_url != '',
-                    # Check if contract hasn't been processed in gold table recently
-                    ~session.query(EmmaContractsGold).filter(
-                        and_(
-                            EmmaContractsGold.detail_url == EmmaPublicContractsSilver.detail_url,
-                            EmmaContractsGold.processed_at > six_hours_ago
-                        )
-                    ).exists()
+                    # Either never processed or not processed in last 24 hours
+                    (
+                        (EmmaPublicContractsSilver.processed == False) |
+                        (EmmaPublicContractsSilver.updated_at < cutoff_time)
+                    )
                 )
-            ).limit(5).all()  # Process max 5 at a time to avoid timeouts
+            ).order_by(EmmaPublicContractsSilver.created_at.desc()).limit(20).all()  # Increased limit for better throughput
             
-            context.log.info(f"Found {len(unprocessed_contracts)} contracts to process")
+            context.log.info(f"Found {len(unprocessed_contracts)} silver contracts to process")
             
             if not unprocessed_contracts:
-                context.log.info("No unprocessed contracts found. All contracts are up to date.")
-                return MaterializeResult(
-                    metadata={
-                        "contracts_processed": 0,
-                        "status": "no_new_contracts",
-                        "message": "All contracts processed within last 6 hours"
-                    }
-                )
+                return MaterializeResult(metadata={
+                    "records_processed": 0,
+                    "message": "No unprocessed silver contracts found"
+                })
             
-            # Extract data we need outside the session to avoid detached instance errors
-            for contract in unprocessed_contracts:
-                contract_data_list.append({
-                    'id': contract.id,
-                    'contract_code': contract.contract_code,
-                    'detail_url': contract.detail_url,
-                    'contract_title': contract.contract_title
-                })
-        
-        # Initialize scraper
-        client = scraper.client
-        if not client._initialized:
-            raise ValueError("Scraper client not initialized")
-        
-        processed_count = 0
-        success_count = 0
-        
-        for contract_data in contract_data_list:
-            try:
-                context.log.info(f"Processing contract {contract_data['contract_code']} from {contract_data['detail_url']}")
-                
-                # Scrape the contract detail page
-                html_content = asyncio.run_coroutine_threadsafe(
-                    scrape_single_contract(client, contract_data['detail_url'], context),
-                    client.event_loop
-                ).result(timeout=90)
-                
-                if not html_content:
-                    context.log.warning(f"Failed to get content for {contract_data['contract_code']}")
-                    continue
-                
-                # Parse and extract data
-                soup = BeautifulSoup(html_content, 'html.parser')
-                extracted_data = extract_contract_data(soup, context)
-                
-                # Add metadata
-                extracted_data.update({
-                    'contract_id': contract_data['contract_code'],
-                    'detail_url': contract_data['detail_url'],
-                    'source_silver_id': contract_data['id']
-                })
-                
-                # Store in Gold table
-                with db.session_scope() as session:
-                    # Check if record exists
+            # Initialize scraper
+            client = scraper.client
+            if not client._initialized:
+                raise ValueError("Scraper client not initialized")
+            
+            records_processed = 0
+            records_created = 0
+            records_updated = 0
+            records_skipped = 0
+            errors = 0
+            
+            # Process each silver record within the same session
+            for silver_record in unprocessed_contracts:
+                try:
+                    # Access record attributes while session is active
+                    contract_code = silver_record.contract_code
+                    detail_url = silver_record.detail_url
+                    silver_id = silver_record.id
+                    
+                    context.log.info(f"Processing contract {contract_code} - {detail_url}")
+                    
+                    # Check if gold record already exists and was recently processed
+                    existing_gold = session.query(EmmaContractsGold).filter(
+                        EmmaContractsGold.contract_id == contract_code
+                    ).first()
+                    
+                    if existing_gold and existing_gold.processed_at and existing_gold.processed_at > cutoff_time:
+                        context.log.info(f"Skipping {contract_code} - processed within 24 hours")
+                        records_skipped += 1
+                        continue
+                    
+                    # Scrape the contract detail page
+                    html_content = asyncio.run_coroutine_threadsafe(
+                        scrape_single_contract(client, detail_url, context),
+                        client.event_loop
+                    ).result(timeout=90)
+                    
+                    if not html_content:
+                        context.log.warning(f"Failed to get content for {contract_code}")
+                        errors += 1
+                        continue
+                    
+                    # Parse and extract data
+                    soup = BeautifulSoup(html_content, 'html.parser')
+                    extracted_data = extract_contract_data(soup, context)
+                    
+                    # Add metadata
+                    extracted_data.update({
+                        'contract_id': contract_code,
+                        'detail_url': detail_url,
+                        'source_silver_id': silver_id
+                    })
+                    
+                    # Store/update in Gold table using the same session
                     existing_record = session.query(EmmaContractsGold).filter(
-                        EmmaContractsGold.contract_id == contract_data['contract_code']
+                        EmmaContractsGold.contract_id == contract_code
                     ).first()
                     
                     if existing_record:
@@ -123,7 +122,8 @@ def emma_contracts_gold(context: AssetExecutionContext) -> MaterializeResult:
                                 setattr(existing_record, key, value)
                         existing_record.updated_at = datetime.utcnow()
                         existing_record.processed_at = datetime.utcnow()
-                        context.log.info(f"Updated Gold record for {contract_data['contract_code']}")
+                        context.log.info(f"Updated Gold record for {contract_code}")
+                        records_updated += 1
                     else:
                         # Create new record
                         gold_record = EmmaContractsGold(
@@ -133,26 +133,34 @@ def emma_contracts_gold(context: AssetExecutionContext) -> MaterializeResult:
                             updated_at=datetime.utcnow()
                         )
                         session.add(gold_record)
-                        context.log.info(f"Created new Gold record for {contract_data['contract_code']}")
-                
-                success_count += 1
-                processed_count += 1
-                
-                # Add small delay between requests to be respectful
-                import time
-                time.sleep(2)
-                
-            except Exception as e:
-                context.log.error(f"Error processing contract {contract_data['contract_code']}: {e}")
-                processed_count += 1
-                continue
+                        context.log.info(f"Created new Gold record for {contract_code}")
+                        records_created += 1
+                    
+                    # Mark silver record as processed
+                    silver_record.processed = True
+                    silver_record.updated_at = datetime.utcnow()
+                    
+                    records_processed += 1
+                    
+                    # Add delay between requests to be respectful
+                    import time
+                    time.sleep(2)
+                    
+                except Exception as e:
+                    context.log.error(f"Error processing {contract_code}: {e}")
+                    errors += 1
+                    continue
+        
+        context.log.info(f"Contracts Gold processing complete: {records_processed} processed, {records_created} created, {records_updated} updated, {records_skipped} skipped, {errors} errors")
         
         return MaterializeResult(
             metadata={
-                "contracts_processed": processed_count,
-                "contracts_successful": success_count,
-                "contracts_failed": processed_count - success_count,
-                "status": "completed"
+                "records_processed": records_processed,
+                "records_created": records_created,
+                "records_updated": records_updated,
+                "records_skipped": records_skipped,
+                "errors": errors,
+                "cutoff_time": cutoff_time.isoformat()
             }
         )
         

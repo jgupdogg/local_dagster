@@ -20,29 +20,39 @@ logger = logging.getLogger(__name__)
 @asset(
     required_resource_keys={"db"},
     group_name="engineering_data",
-    description="Transform raw EMMA solicitations HTML to structured silver data"
+    description="Transform raw EMMA solicitations HTML to structured silver data",
+    deps=["emma_public_solicitations"]
 )
 def emma_solicitations_silver(context: AssetExecutionContext) -> MaterializeResult:
     """Parse HTML from bronze and create structured silver records with change detection."""
     db: DatabaseResource = context.resources.db
     
     try:
-        # Get latest bronze data
+        # Get unprocessed bronze data
         with db.session_scope() as session:
-            bronze_record = session.query(EmmaPublicSolicitations).order_by(
+            # Find Bronze records that haven't been processed yet
+            processed_bronze_ids = session.query(EmmaPublicSolicitationsSilver.source_bronze_id).distinct().all()
+            processed_bronze_ids = [id[0] for id in processed_bronze_ids] if processed_bronze_ids else []
+            
+            bronze_record = session.query(EmmaPublicSolicitations).filter(
+                ~EmmaPublicSolicitations.id.in_(processed_bronze_ids)
+            ).order_by(
                 EmmaPublicSolicitations.timestamp.desc()
             ).first()
             
             if not bronze_record:
-                context.log.warning("No bronze solicitations data found")
-                return MaterializeResult(metadata={"records_processed": 0})
+                context.log.info("No unprocessed bronze solicitations data found")
+                return MaterializeResult(metadata={
+                    "records_processed": 0,
+                    "message": "All bronze records already processed"
+                })
             
             # Extract values while in session
             bronze_id = bronze_record.id
             bronze_timestamp = bronze_record.timestamp
             raw_html = bronze_record.value.get('raw_html', '')
             
-            context.log.info(f"Processing bronze record ID: {bronze_id}")
+            context.log.info(f"Processing new bronze record ID: {bronze_id} (timestamp: {bronze_timestamp})")
             
             if not raw_html:
                 context.log.warning("No HTML content in bronze record")

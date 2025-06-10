@@ -7,6 +7,7 @@ from dagster import (
     define_asset_job,
     AssetSelection,
     EnvVar,
+    ScheduleDefinition,
 )
 
 from engineering_pipeline import assets
@@ -26,6 +27,23 @@ emma_gsheets_export_job = define_asset_job(
     name="emma_gsheets_export_job",
     selection=AssetSelection.groups("google_sheets_emma"),
     description="Export EMMA gold data to Google Sheets"
+)
+
+# Define scheduled jobs for automated execution
+emma_daily_pipeline_job = define_asset_job(
+    name="emma_daily_pipeline_job",
+    selection=AssetSelection.assets([
+        "emma_public_solicitations", "emma_solicitations_silver", "emma_solicitations_gold",
+        "emma_public_contracts", "emma_contracts_silver", "emma_contracts_gold"
+    ]),
+    description="Run complete EMMA pipeline daily (solicitations and contracts)"
+)
+
+# Define schedules
+emma_daily_schedule = ScheduleDefinition(
+    job=emma_daily_pipeline_job,
+    cron_schedule="0 6 * * *",  # Run daily at 6 AM
+    description="Run EMMA solicitations pipeline daily at 6 AM"
 )
 
 # Configure resources
@@ -51,5 +69,6 @@ resources = {
 engineering_pipeline_defs = Definitions(
     assets=engineering_assets,
     resources=resources,
-    jobs=[emma_scraping_job, emma_gsheets_export_job],
+    jobs=[emma_scraping_job, emma_gsheets_export_job, emma_daily_pipeline_job],
+    schedules=[emma_daily_schedule],
 )

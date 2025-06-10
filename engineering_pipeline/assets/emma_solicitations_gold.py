@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 @asset(
     required_resource_keys={"unified_scraper", "db"},
     group_name="engineering_data",
-    description="Scrape detailed EMMA solicitation pages and extract comprehensive data to Gold layer"
+    description="Scrape detailed EMMA solicitation pages and extract comprehensive data to Gold layer",
+    deps=["emma_solicitations_silver"]
 )
 def emma_solicitations_gold(context: AssetExecutionContext) -> MaterializeResult:
     """Process all unprocessed silver records to create comprehensive gold data."""
@@ -61,7 +62,7 @@ def emma_solicitations_gold(context: AssetExecutionContext) -> MaterializeResult
                         (EmmaPublicSolicitationsSilver.updated_at < cutoff_time)
                     )
                 )
-            ).order_by(EmmaPublicSolicitationsSilver.created_at.desc()).limit(10).all()  # Limit for safety
+            ).order_by(EmmaPublicSolicitationsSilver.created_at.desc()).limit(50).all()  # Increased limit for better throughput
             
             context.log.info(f"Found {len(unprocessed_records)} silver records to process")
             
