@@ -13,7 +13,7 @@ from dagster import (
     AssetExecutionContext,
     AssetKey,
 )
-from dagster_postgres.storage import postgres_io_manager
+# Removed postgres_io_manager - no longer available in newer dagster-postgres versions
 
 
 from dagster_slack import SlackResource
@@ -147,10 +147,7 @@ resources = {
         profiles_dir=str(DBT_PROJECT_DIR),
         target_path=str(DBT_PROJECT_DIR / "target"),
     ),
-    "io_manager": postgres_io_manager(
-        conn_string=f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}",
-        schema="public"
-    ),
+    # Using default IO manager - assets handle their own DB operations via db resource
 }
 
 
